@@ -257,4 +257,33 @@ Determining which variable produced the maximum value.  Keywords: sas sql join m
 
 
 
+    Keintz, Mark via listserv.uga.edu
+    11:20 AM (9 minutes ago)
+     to SAS-L
+    Paul, Bartosz
+
+    You can achieve a little better performance by eschewing unneeded use of
+    the vname function inside the do over loop.  Instead retrieve names from a
+    temporary array created at _N_=1.
+
+    Paul has regularly mentioned the superiority of key-index to other lookup structures.
+    In this case it's also 5 times faster than vname function, per the code below:
+
+
+    %let nv=80;
+
+    data _null_;
+      array V val1-val&nv;
+      array vn [&nv] _temporary_;
+      do over V;
+        vn[_i_]=vname(V),
+      end;
+      do i=1 to 2**14;
+         do over V;
+           vnam=vn[_i_];
+         end;
+      end:
+    run;
+
+
 
