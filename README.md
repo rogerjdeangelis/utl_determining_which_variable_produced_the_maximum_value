@@ -20,6 +20,11 @@ Determining which variable produced the maximum value.  Keywords: sas sql join m
 
          3. Paul Dorfman hash
          4. Bart Jablonski <yabwon@gmail.com>  improved datastep
+         
+         
+      FINAL: Nice sumary Paul
+      Paul Dorfman via listserv.uga.edu
+
 
 
     https://tinyurl.com/ycyl4oxl
@@ -284,6 +289,238 @@ Determining which variable produced the maximum value.  Keywords: sas sql join m
          end;
       end:
     run;
+
+    ======
+    SUMMARY
+    =======
+
+    Nice sumary Paul
+    Paul Dorfman via listserv.uga.edu
+
+
+    Bart,
+
+    You sure do! More elegance + better performance in one package.
+    I've been wondering about the hanging choice between >, <, and =, and you've nailed it.
+
+    Please do permit me to add a bit more elegance by making your code
+    still terser and a tiny bit of performance by eliminating the max assignment
+    (it's not needed since max is set to missing at the top of the implied loop), like so:
+
+    data wantB (keep = var) ;
+      set have ;
+      array v val: ;
+      length var $ %sysevalf (&d * 5 + 1) ;
+      do over v ;
+        if v < _m then continue ;
+        if v > _m then var = "" ;
+        _m = v ;
+        var = catx("|", var, vname(v)) ;
+      end ;
+    run ;
+
+    Now your improvement has clued me in to do the same with my "concat at the end" code:
+
+    data wantD (keep = var) ;
+      set have ;
+      array v val: ;
+      length var $ %sysevalf (&d * 5 + 1) ;
+      array vv [&d] $ 5 _temporary_ ;
+      do over v ;
+        if v < _m then continue ;
+        if v > _m then _j = 0 ;
+        _j + 1 ;
+        vv[_j] = vname (v) ;
+        _m = v ;
+      end ;
+      do _i_ = 1 to _j ;
+        var = catx ("|", var, vv[_i_]) ;
+      end ;
+    run ;
+
+    Unsurprisingly, this approach performs, relative to the rest, the better,
+    the greater the dimension D is.
+
+    However, with large D's the improvement suggested by Mark Keintz makes a far greater
+    impact because it eschews the need of repeatedly calling the rather slow
+    VNAME function in favor of pre-storing the variable names in a key-indexed table.
+    For example, your code above with this augmentation would look like:
+
+    data wantBM (keep = var) ;
+      set have ;
+      array v val: ;
+      array vn [&d] $ 5 _temporary_ ;
+      if _n_ = 1 then do over v ;
+        vn[_i_] = vname (v) ;
+      end ;
+      length var $ %sysevalf (&d * 5 + 1) ;
+      do over v ;
+        if v < _m then continue ;
+        if v > _m then var = "" ;
+        _m = v ;
+        var = catx("|", var, vn[_i_]) ;
+      end ;
+    run ;
+
+    Needless to say, Roger's original code can use the same improvement:
+
+    data wantRM (keep = var);
+      set have ;
+      array v val: ;
+      length var $ %sysevalf (&d * 5 + 1) ;
+      array vn [&d] $ 5 _temporary_ ;
+      if _n_ = 1 then do over v ;
+        vn[_i_] = vname (v) ;
+      end ;
+      _m = max (of v[*]) ;
+       do over v ;
+         if v = _m then var = catx ('|', var, vn[_i_]) ;
+       end ;
+    run ;
+
+    To see how much performance different improvements add, I ran the code
+    below for D=6000 and N=10000. For the purity of experiment, I had _NULL_ed
+    out the output, then subtracted the pure read time from the resulting run
+    times. This resulted in the following (in seconds):
+
+    Roger original: 10.31
+    Roger + Mark: 6.65
+    Bart improved: 10.8
+    Bart improved + Mark: 6.99
+    Paul with Bart improvement: 10.3
+    Paul with Bart improvement + Mark: 6.62
+
+    Key-indexing the var names per Mark suggestion shaves about 30% off the run
+    time no matter what, so obviously VNAME here is the biggest fish to fry.
+
+    It's been fun ;).
+
+    Best regards,
+    Paul Dorfman
+
+    %let d =  6000 ;
+    %let n = 10000 ;
+
+    data have ;
+      array val val1 - val&d ;
+      do _n_ = 1 to &n ;
+         do over val ;
+           val = int (50 * uniform (1234)) ;
+         end ;
+         output ;
+      end ;
+    run ;
+
+    ** Pure read to detect time ** ;
+
+    data _null_ ;
+      set have ;
+    run ;
+
+    ** Roger original ** ;
+
+    data _null_ ;
+      set have ;
+      array v val: ;
+      length var $ %sysevalf (&d * 5 + 1) ;
+      _m = max (of v[*]) ;
+       do over v ;
+         if v = _m then var = catx ('|', var, vname (v)) ;
+       end ;
+    run ;
+
+    ** Roger + Mark ** ;
+
+    data _null_ ;
+      set have ;
+      array v val: ;
+      length var $ %sysevalf (&d * 5 + 1) ;
+      array vn [&d] $ 5 _temporary_ ;
+      if _n_ = 1 then do over v ;
+        vn[_i_] = vname (v) ;
+      end ;
+      _m = max (of v[*]) ;
+       do over v ;
+         if v = _m then var = catx ('|', var, vn[_i_]) ;
+       end ;
+    run ;
+
+    ** Bart improved ** ;
+
+    data _null_ ;
+      set have ;
+      array v val: ;
+      length var $ %sysevalf (&d * 5 + 1) ;
+      do over v ;
+        if v < _m then continue ;
+        if v > _m then var = "" ;
+        _m = v ;
+        var = catx("|", var, vname(v)) ;
+      end ;
+    run ;
+
+    ** Bart improved + Mark ** ;
+
+    data _null_ ;
+      set have ;
+      array v val: ;
+      array vn [&d] $ 5 _temporary_ ;
+      if _n_ = 1 then do over v ;
+        vn[_i_] = vname (v) ;
+      end ;
+      length var $ %sysevalf (&d * 5 + 1) ;
+      do over v ;
+        if v < _m then continue ;
+        if v > _m then var = "" ;
+        _m = v ;
+        var = catx("|", var, vn[_i_]) ;
+      end ;
+    run ;
+
+    ** Paul with Bart improvement ** ;
+
+    data _null_ ;
+      set have ;
+      array v val: ;
+      length var $ %sysevalf (&d * 5 + 1) ;
+      array vv [&d] $ 5 _temporary_ ;
+      do over v ;
+        if v < _m then continue ;
+        if v > _m then _j = 0 ;
+        _j + 1 ;
+        vv[_j] = vname (v) ;
+        _m = v ;
+      end ;
+      do _i_ = 1 to _j ;
+        var = catx ("|", var, vv[_i_]) ;
+      end ;
+    run ;
+
+    ** Paul with Bart improvement + Mark ** ;
+
+    data _null_ ;
+      set have ;
+      array v val: ;
+      length var $ %sysevalf (&d * 5 + 1) ;
+      array vn [&d] $ 5 _temporary_ ;
+      if _n_ = 1 then do over v ;
+        vn[_i_] = vname (v) ;
+      end ;
+      array vv [&d] $ 5 _temporary_ ;
+      do over v ;
+        if v < _m then continue ;
+        if v > _m then _j = 0 ;
+        _j + 1 ;
+        vv[_j] = vn[_i_] ;
+        _m = v ;
+      end ;
+      do _i_ = 1 to _j ;
+        var = catx ("|", var, vv[_i_]) ;
+      end ;
+    run ;
+
+
+
 
 
 
