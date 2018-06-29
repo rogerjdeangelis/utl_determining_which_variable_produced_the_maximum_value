@@ -218,3 +218,40 @@ end;
 
 run;
 
+* faster by bart;
+
+%let D =  10 ;
+%let N = 100 ;
+
+data have ;
+  array val val1 - val&d ;
+  do _n_ = 1 to &n ;
+     do over val ;
+       val = int (50 * uniform (1234)) ;
+     end ;
+     output ;
+  end ;
+run ;
+
+* faster
+data want (drop = _:) ;
+  set have ;
+  array v val: ;
+  length var $ %sysevalf (&d * 5 + 1) ;
+  array vv [&d] $ 5 _temporary_ ;
+  do over v ;
+    if v > _m then do ;
+      _m = v ;
+      _j = 1 ;
+      vv[_j] = vname (v) ;
+    end ;
+    else if v = _m then do ;
+      _j + 1 ;
+      vv[_j] = vname (v) ;
+    end ;
+  end ;
+  do _i_ = 1 to _j ;
+    var = catx ("|", var, vv[_i_]) ;
+  end ;
+run ;
+
